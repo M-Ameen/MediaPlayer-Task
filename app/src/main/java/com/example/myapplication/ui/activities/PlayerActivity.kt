@@ -1,8 +1,6 @@
-package com.example.myapplication
+package com.example.myapplication.ui.activities
 
-import android.net.Uri
 import android.os.Bundle
-import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import com.example.myapplication.databinding.ActivityPlayerBinding
 import com.google.android.exoplayer2.MediaItem

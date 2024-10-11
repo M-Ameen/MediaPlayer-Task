@@ -1,4 +1,4 @@
-package com.example.myapplication
+package com.example.myapplication.ui.adapters
 
 import android.view.LayoutInflater
 import android.view.View
@@ -8,7 +8,8 @@ import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
-import com.example.myapplication.data.VideoModel
+import com.example.myapplication.R
+import com.example.myapplication.data.models.VideoModel
 import com.google.android.ads.nativetemplates.NativeTemplateStyle
 import com.google.android.ads.nativetemplates.TemplateView
 import com.google.android.gms.ads.AdLoader
@@ -16,7 +17,7 @@ import com.google.android.gms.ads.AdRequest
 import java.util.concurrent.TimeUnit
 
 class VideoAdapter(
-    private val videoList: List<VideoModel>,
+    private var videoList: List<VideoModel>,
     private val onDelete: (VideoModel) -> Unit,
     private val onShare: (VideoModel) -> Unit,
     private val onOpen: (VideoModel) -> Unit
@@ -141,6 +142,11 @@ class VideoAdapter(
             sizeMb >= 1 -> String.format("%.2f MB", sizeMb)
             else -> String.format("%.2f KB", sizeKb)
         }
+    }
+
+    fun submitList(videos: List<VideoModel>) {
+        videoList = videos
+        notifyDataSetChanged()
     }
 }
 

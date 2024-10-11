@@ -1,19 +1,24 @@
-package com.example.myapplication
+package com.example.myapplication.ui.activities
 
-import android.content.ContentUris
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.GridLayoutManager
-import com.example.myapplication.data.VideoModel
+import com.example.myapplication.ui.adapters.VideoAdapter
+import com.example.myapplication.data.repository.VideoRepository
+import com.example.myapplication.ui.viewmodel.VideoViewModel
+import com.example.myapplication.ui.viewmodel.VideoViewModelFactory
+import com.example.myapplication.data.models.VideoModel
 import com.example.myapplication.databinding.ActivityMainBinding
+import com.example.myapplication.utils.InterstitialAdHelper
 import com.google.android.gms.ads.MobileAds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +32,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var interstitialAdHelper: InterstitialAdHelper
 
     private val TAG = "MainActivity"
+
+    private lateinit var gridLayoutManager: GridLayoutManager
+
+    private lateinit var videoViewModel: VideoViewModel
+    @RequiresApi(Build.VERSION_CODES.M)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -37,6 +47,14 @@ class MainActivity : AppCompatActivity() {
             // Initialize the Google Mobile Ads SDK on a background thread.
             MobileAds.initialize(this@MainActivity) {}
         }
+
+
+        val repository = VideoRepository(contentResolver)
+        val viewModelFactory = VideoViewModelFactory(repository)
+        videoViewModel = ViewModelProvider(this, viewModelFactory)
+            .get(VideoViewModel::class.java)
+
+
         interstitialAdHelper = InterstitialAdHelper(this)
         interstitialAdHelper.loadAd()
 
@@ -55,7 +73,7 @@ class MainActivity : AppCompatActivity() {
             }
         )
 
-        val gridLayoutManager = GridLayoutManager(this, 3)
+        gridLayoutManager = GridLayoutManager(this, 3)
 
         gridLayoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
             override fun getSpanSize(position: Int): Int {
@@ -67,17 +85,37 @@ class MainActivity : AppCompatActivity() {
             }
         }
         binding.rvVideos.layoutManager = gridLayoutManager
-
         binding.rvVideos.adapter = videoAdapter
 
-        showCustomPermissionDialog()
+//        showCustomPermissionDialog()
 
         binding.swiperefresh.setOnRefreshListener {
-            loadVideosFromGallery()
+//            loadVideosFromGallery()
             binding.swiperefresh.isRefreshing = false
         }
+        // Observe the videoList LiveData
+        videoViewModel.videoList.observe(this) { videos ->
+            videoAdapter.submitList(videos) // Update the adapter with the new video list
+        }
 
+        checkPermissions()
 
+    }
+    @RequiresApi(Build.VERSION_CODES.M)
+    private fun checkPermissions() {
+        if (hasStoragePermission()) {
+            videoViewModel.loadVideos()
+        } else {
+            showCustomPermissionDialog()
+        }
+    }
+    @RequiresApi(Build.VERSION_CODES.M)
+    private fun hasStoragePermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            checkSelfPermission(android.Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
+        } else {
+            checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+        }
     }
 
     private fun openVideoInPlayer(video: VideoModel) {
@@ -87,18 +125,30 @@ class MainActivity : AppCompatActivity() {
         startActivity(intent)
     }
 
-    private fun showCustomPermissionDialog() {
+    private fun showCustomPermissionDialog(isSecondAttempt: Boolean = false) {
+        val message = if (isSecondAttempt) {
+            "This permission is required to access your media files. Without this permission, the app cannot display videos from your gallery. Please allow it."
+        } else {
+            "We need access to your media files to show videos from your gallery."
+        }
         val dialog = AlertDialog.Builder(this)
             .setTitle("Permission Needed")
-            .setMessage("We need access to your media files to show videos from your gallery.")
+            .setMessage(message)
             .setPositiveButton("Allow") { dialog, _ ->
                 requestStoragePermission()
                 dialog.dismiss()
             }
             .setNegativeButton("Deny") { dialog, _ ->
                 dialog.dismiss()
+                if (!isSecondAttempt) {
+                    showCustomPermissionDialog(isSecondAttempt = true)
+                } else {
+                    Toast.makeText(this, "Permission is required to use this feature!", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
             }
             .create()
+
         dialog.show()
     }
 
@@ -124,55 +174,12 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == REQUEST_CODE_PERMISSION && grantResults.isNotEmpty()
             && grantResults[0] == PackageManager.PERMISSION_GRANTED
         ) {
-            // Permission granted, proceed with loading videos
-            loadVideosFromGallery()
+            Log.d(TAG, "onRequestPermissionsResult: Permission Granted")
+            videoViewModel.loadVideos()
         } else {
             // Permission denied, handle it
+            Log.d(TAG, "onRequestPermissionsResult: Permission denied")
             Toast.makeText(this, "Permission denied!", Toast.LENGTH_SHORT).show()
         }
     }
-
-    private fun loadVideosFromGallery() {
-        val projection = arrayOf(
-            MediaStore.Video.Media._ID,
-            MediaStore.Video.Media.DISPLAY_NAME,
-            MediaStore.Video.Media.SIZE,
-            MediaStore.Video.Media.DURATION,
-            MediaStore.Video.Media.DATE_MODIFIED
-        )
-
-        val sortOrder = "${MediaStore.Video.Media.DATE_MODIFIED} DESC"
-
-        val cursor = contentResolver.query(
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            null,
-            null,
-            sortOrder
-        )
-
-        cursor?.use {
-            val idColumn = it.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
-            val nameColumn = it.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
-            val sizeColumn = it.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
-            val durationColumn = it.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
-            val dateModifiedColumn = it.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_MODIFIED)
-
-            while (it.moveToNext()) {
-                val id = it.getLong(idColumn)
-                val name = it.getString(nameColumn)
-                val size = it.getLong(sizeColumn)
-                val duration = it.getLong(durationColumn)
-                val dateModified = it.getLong(dateModifiedColumn)
-
-                val uri =
-                    ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
-                videoList.add(VideoModel(name, size, duration, dateModified, uri))
-            }
-            videoAdapter.notifyDataSetChanged()
-        }
-
-    }
-
-
 }

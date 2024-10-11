@@ -27,10 +27,10 @@
             android:value="false" />
 
         <activity
-            android:name=".PlayerActivity"
+            android:name=".ui.activities.PlayerActivity"
             android:exported="false" />
         <activity
-            android:name=".MainActivity"
+            android:name=".ui.activities.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
